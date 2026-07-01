@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2f4a3f">
+  <title>朗讀文章</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="朗讀文章">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>朗讀文章</h1>
+      <p class="subtitle">貼上文章，幫你整理斷句後順順朗讀</p>
+    </header>
+
+    <!-- 輸入區 -->
+    <section id="inputView" class="card">
+      <label class="field-label" for="inputText">貼上你的文章</label>
+      <textarea id="inputText" placeholder="在這裡貼上或輸入文章…"></textarea>
+      <div class="row">
+        <button id="cleanBtn" class="btn btn-primary">整理並斷句</button>
+        <button id="clearBtn" class="btn btn-ghost">清空</button>
+      </div>
+    </section>
+
+    <!-- 預覽 / 播放區 -->
+    <section id="readView" class="card hidden">
+      <div class="row space-between">
+        <span class="field-label" id="sentenceCount">共 0 句</span>
+        <button id="backBtn" class="btn btn-ghost small">重新編輯</button>
+      </div>
+
+      <div id="sentences" class="sentences"></div>
+
+      <!-- 控制列 -->
+      <div class="controls">
+        <button id="playBtn" class="btn btn-round" aria-label="播放">▶</button>
+        <button id="pauseBtn" class="btn btn-round" aria-label="暫停" disabled>⏸</button>
+        <button id="stopBtn" class="btn btn-round" aria-label="停止" disabled>⏹</button>
+      </div>
+
+      <div class="setting">
+        <label for="rate">語速 <span id="rateVal">1.0×</span></label>
+        <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+      </div>
+
+      <div class="setting toggle-row">
+        <label for="storyMode">說故事模式（區分對話與旁白）</label>
+        <label class="switch">
+          <input type="checkbox" id="storyMode" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="setting">
+        <label for="voiceSelect">旁白聲音</label>
+        <select id="voiceSelect"></select>
+      </div>
+
+      <div class="setting" id="dialogueVoiceWrap">
+        <label for="dialogueVoiceSelect">對話聲音</label>
+        <select id="dialogueVoiceSelect"></select>
+      </div>
+
+      <div class="setting">
+        <label for="pauseLen">句子間停頓 <span id="pauseVal">中</span></label>
+        <input type="range" id="pauseLen" min="0" max="600" step="100" value="200">
+      </div>
+    </section>
+
+    <p id="hint" class="hint"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

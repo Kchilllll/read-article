@@ -1,0 +1,19 @@
+{
+  "name": "朗讀文章",
+  "short_name": "朗讀文章",
+  "description": "貼上文章，自動整理斷句後順暢朗讀",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4ece0",
+  "theme_color": "#2f4a3f",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
