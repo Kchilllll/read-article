@@ -32,6 +32,33 @@ const azureVoices   = $('azureVoices');
 const azureNarSelect = $('azureNarSelect');
 const azureDlgSelect = $('azureDlgSelect');
 const azureDlgWrap   = $('azureDlgWrap');
+const narStyle = $('narStyle');
+const dlgStyle = $('dlgStyle');
+
+// 可選的 AI 聲音
+const AZURE_VOICES = [
+  { v: 'zh-TW-HsiaoChenNeural', label: '曉臻（女・台灣）' },
+  { v: 'zh-TW-YunJheNeural',    label: '雲哲（男・台灣）' },
+  { v: 'zh-TW-HsiaoYuNeural',   label: '曉雨（女・台灣）' },
+  { v: 'zh-CN-XiaoxiaoNeural',  label: '曉曉（女・大陸・可情緒）' },
+  { v: 'zh-CN-YunxiNeural',     label: '雲希（男・大陸・可情緒）' },
+  { v: 'zh-CN-YunjianNeural',   label: '雲健（男・大陸・戲劇感）' },
+  { v: 'zh-CN-XiaomoNeural',    label: '曉墨（女・大陸・可情緒）' },
+  { v: 'zh-CN-XiaoyiNeural',    label: '曉伊（女・大陸）' },
+  { v: 'zh-CN-YunyangNeural',   label: '雲揚（男・大陸・播報感）' },
+];
+
+// 情緒／語氣（只對大陸腔聲音有效）
+const AZURE_STYLES = [
+  { v: 'general',           label: '自然（無情緒）' },
+  { v: 'gentle',            label: '溫柔' },
+  { v: 'cheerful',          label: '開心' },
+  { v: 'sad',               label: '悲傷' },
+  { v: 'serious',           label: '嚴肅' },
+  { v: 'angry',             label: '生氣' },
+  { v: 'narration-relaxed', label: '說書（放鬆）' },
+  { v: 'chat',              label: '聊天' },
+];
 
 // 雲端 AI 語音代理（Cloudflare Worker）
 const WORKER_URL = 'https://tts.kchill.workers.dev';
@@ -204,43 +231,53 @@ function azureVoiceFor(unit){
     ? azureDlgSelect.value : azureNarSelect.value;
 }
 
-function buildSSML(text, voiceName){
+function azureStyleFor(unit){
+  return (storyMode.checked && unit.type === 'dialogue')
+    ? dlgStyle.value : narStyle.value;
+}
+
+function buildSSML(text, voiceName, style){
   const esc = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-  return "<speak version='1.0' xml:lang='zh-TW'><voice name='" +
-    voiceName + "'>" + esc + "</voice></speak>";
+  const locale = voiceName.split('-').slice(0, 2).join('-');   // zh-TW / zh-CN
+  // 情緒只對大陸腔（zh-CN）聲音套用
+  let inner = esc;
+  if(style && style !== 'general' && locale === 'zh-CN'){
+    inner = "<mstts:express-as style='" + style + "'>" + esc + "</mstts:express-as>";
+  }
+  return "<speak version='1.0' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='" +
+    locale + "'><voice name='" + voiceName + "'>" + inner + "</voice></speak>";
+}
+
+async function fetchTTS(ssml){
+  return fetch(WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ssml })
+  });
 }
 
 // 取得某一段的音檔網址：先看記憶體、再看手機本機快取、最後才跟雲端要
 async function getAudioURL(unit){
   const voiceName = azureVoiceFor(unit);
-  const key = voiceName + '|' + unit.text;
+  const style = azureStyleFor(unit);
+  const key = voiceName + '|' + style + '|' + unit.text;
   if(memCache.has(key)) return memCache.get(key);
 
   const cacheKey = 'https://tts.cache/' + encodeURIComponent(key);
-  let resp;
-  try {
-    const cache = await caches.open('tts-audio');
-    resp = await cache.match(cacheKey);
-    if(!resp){
-      const r = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ssml: buildSSML(unit.text, voiceName) })
-      });
-      if(!r.ok) throw new Error('tts ' + r.status);
-      await cache.put(cacheKey, r.clone());
-      resp = r;
+  let cache = null;
+  try { cache = await caches.open('tts-audio'); } catch(e){ cache = null; }
+
+  let resp = cache ? await cache.match(cacheKey) : null;
+  if(!resp){
+    let r = await fetchTTS(buildSSML(unit.text, voiceName, style));
+    // 若帶情緒失敗（某些聲音不支援該情緒），自動退回無情緒再試一次
+    if(!r.ok && style && style !== 'general'){
+      r = await fetchTTS(buildSSML(unit.text, voiceName, 'general'));
     }
-  } catch(e){
-    // 無法用 Cache（例如隱私模式）就直接抓
-    const r = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ssml: buildSSML(unit.text, voiceName) })
-    });
     if(!r.ok) throw new Error('tts ' + r.status);
+    if(cache){ try { await cache.put(cacheKey, r.clone()); } catch(e){} }
     resp = r;
   }
   const url = URL.createObjectURL(await resp.blob());
@@ -517,6 +554,33 @@ hqMode.addEventListener('change', () => {
 
 azureNarSelect.addEventListener('change', () => localStorage.setItem('azureNar', azureNarSelect.value));
 azureDlgSelect.addEventListener('change', () => localStorage.setItem('azureDlg', azureDlgSelect.value));
+narStyle.addEventListener('change', () => localStorage.setItem('narStyle', narStyle.value));
+dlgStyle.addEventListener('change', () => localStorage.setItem('dlgStyle', dlgStyle.value));
+
+// 填入 AI 聲音與語氣選單
+function fillAzureSelects(){
+  [azureNarSelect, azureDlgSelect].forEach(sel => {
+    sel.innerHTML = '';
+    AZURE_VOICES.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+  });
+  [narStyle, dlgStyle].forEach(sel => {
+    sel.innerHTML = '';
+    AZURE_STYLES.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+  });
+  // 預設：旁白曉臻、對話雲哲、語氣自然
+  azureNarSelect.value = 'zh-TW-HsiaoChenNeural';
+  azureDlgSelect.value = 'zh-TW-YunJheNeural';
+  narStyle.value = 'general';
+  dlgStyle.value = 'general';
+}
 
 // ============================================================
 //  6) 初始化
@@ -538,10 +602,15 @@ function init(){
   // 高音質模式與 AI 聲音
   hqMode.checked = localStorage.getItem('hqMode') === '1';
   applyHqUI();
-  const savedNar = localStorage.getItem('azureNar');
-  if(savedNar && azureNarSelect.querySelector(`option[value="${savedNar}"]`)) azureNarSelect.value = savedNar;
-  const savedDlg = localStorage.getItem('azureDlg');
-  if(savedDlg && azureDlgSelect.querySelector(`option[value="${savedDlg}"]`)) azureDlgSelect.value = savedDlg;
+  fillAzureSelects();
+  const restore = (sel, k) => {
+    const s = localStorage.getItem(k);
+    if(s && sel.querySelector(`option[value="${s}"]`)) sel.value = s;
+  };
+  restore(azureNarSelect, 'azureNar');
+  restore(azureDlgSelect, 'azureDlg');
+  restore(narStyle, 'narStyle');
+  restore(dlgStyle, 'dlgStyle');
 
   loadVoices();
   if(speechSynthesis.onvoiceschanged !== undefined){

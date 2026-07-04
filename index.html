@@ -82,20 +82,23 @@
       <div id="azureVoices" class="hidden">
         <div class="setting">
           <label for="azureNarSelect">旁白聲音（AI）</label>
-          <select id="azureNarSelect">
-            <option value="zh-TW-HsiaoChenNeural">曉臻（女聲・台灣）</option>
-            <option value="zh-TW-YunJheNeural">雲哲（男聲・台灣）</option>
-            <option value="zh-TW-HsiaoYuNeural">曉雨（女聲・台灣）</option>
-          </select>
+          <select id="azureNarSelect" class="voice-list"></select>
         </div>
-        <div class="setting" id="azureDlgWrap">
-          <label for="azureDlgSelect">對話聲音（AI）</label>
-          <select id="azureDlgSelect">
-            <option value="zh-TW-YunJheNeural">雲哲（男聲・台灣）</option>
-            <option value="zh-TW-HsiaoChenNeural">曉臻（女聲・台灣）</option>
-            <option value="zh-TW-HsiaoYuNeural">曉雨（女聲・台灣）</option>
-          </select>
+        <div class="setting">
+          <label for="narStyle">旁白語氣</label>
+          <select id="narStyle" class="style-list"></select>
         </div>
+        <div id="azureDlgWrap">
+          <div class="setting">
+            <label for="azureDlgSelect">對話聲音（AI）</label>
+            <select id="azureDlgSelect" class="voice-list"></select>
+          </div>
+          <div class="setting">
+            <label for="dlgStyle">對話語氣</label>
+            <select id="dlgStyle" class="style-list"></select>
+          </div>
+        </div>
+        <p class="mini-note">💡 「語氣」只在大陸腔聲音（曉曉、雲希、雲健…）有效果；台灣腔聲音會忽略語氣。</p>
       </div>
 
       <div class="setting">
