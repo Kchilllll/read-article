@@ -1,5 +1,6 @@
 /* Service Worker — 讓 App 離線可開 */
-const CACHE = 'read-article-v2';
+const CACHE = 'read-article-v3';
+const AUDIO_CACHE = 'tts-audio';   // 雲端語音音檔快取，勿刪
 const ASSETS = [
   './',
   './index.html',
@@ -17,7 +18,11 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      Promise.all(
+        keys
+          .filter((k) => k !== CACHE && k !== AUDIO_CACHE)
+          .map((k) => caches.delete(k))
+      )
     )
   );
   self.clients.claim();

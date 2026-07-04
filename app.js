@@ -26,6 +26,20 @@ const storyMode = $('storyMode');
 const pauseLen = $('pauseLen');
 const pauseVal = $('pauseVal');
 const hint     = $('hint');
+const hqMode        = $('hqMode');
+const browserVoices = $('browserVoices');
+const azureVoices   = $('azureVoices');
+const azureNarSelect = $('azureNarSelect');
+const azureDlgSelect = $('azureDlgSelect');
+const azureDlgWrap   = $('azureDlgWrap');
+
+// 雲端 AI 語音代理（Cloudflare Worker）
+const WORKER_URL = 'https://tts.kchill.workers.dev';
+const hqAudio = new Audio();
+const memCache = new Map();        // 本次開啟期間的音檔快取（記憶體）
+let hqUnlocked = false;
+// 一小段無聲音檔，用來在 iPhone 上「解鎖」自動播放
+const SILENT = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
 
 // ---------- 狀態 ----------
 let sentences = [];   // [{ segments:[{text,type}], fullText, paraGap }]
@@ -183,7 +197,98 @@ function highlight(sIdx){
 }
 
 // ============================================================
-//  3) 朗讀（一段一段唸，對話與旁白用不同聲音）
+//  3a) 雲端 AI 語音（高音質）
+// ============================================================
+function azureVoiceFor(unit){
+  return (storyMode.checked && unit.type === 'dialogue')
+    ? azureDlgSelect.value : azureNarSelect.value;
+}
+
+function buildSSML(text, voiceName){
+  const esc = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  return "<speak version='1.0' xml:lang='zh-TW'><voice name='" +
+    voiceName + "'>" + esc + "</voice></speak>";
+}
+
+// 取得某一段的音檔網址：先看記憶體、再看手機本機快取、最後才跟雲端要
+async function getAudioURL(unit){
+  const voiceName = azureVoiceFor(unit);
+  const key = voiceName + '|' + unit.text;
+  if(memCache.has(key)) return memCache.get(key);
+
+  const cacheKey = 'https://tts.cache/' + encodeURIComponent(key);
+  let resp;
+  try {
+    const cache = await caches.open('tts-audio');
+    resp = await cache.match(cacheKey);
+    if(!resp){
+      const r = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssml: buildSSML(unit.text, voiceName) })
+      });
+      if(!r.ok) throw new Error('tts ' + r.status);
+      await cache.put(cacheKey, r.clone());
+      resp = r;
+    }
+  } catch(e){
+    // 無法用 Cache（例如隱私模式）就直接抓
+    const r = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssml: buildSSML(unit.text, voiceName) })
+    });
+    if(!r.ok) throw new Error('tts ' + r.status);
+    resp = r;
+  }
+  const url = URL.createObjectURL(await resp.blob());
+  memCache.set(key, url);
+  return url;
+}
+
+function prefetch(i){
+  if(i < units.length) getAudioURL(units[i]).catch(()=>{});
+}
+
+async function speakCurrentHQ(){
+  if(current < 0 || current >= units.length){ stopAll(); return; }
+  const unit = units[current];
+  highlight(unit.sIdx);
+  let url;
+  try {
+    url = await getAudioURL(unit);
+  } catch(e){
+    hint.textContent = '⚠️ 雲端語音讀取失敗，請檢查網路（或關掉高音質改用免費語音）。';
+    stopAll();
+    return;
+  }
+  if(!speaking || paused) return;   // 抓取途中被停掉
+  prefetch(current + 1);            // 先預抓下一段，減少空隙
+  hqAudio.src = url;
+  hqAudio.playbackRate = parseFloat(rate.value);
+  hqAudio.play().catch(()=>{});
+}
+
+hqAudio.onended = () => {
+  if(!speaking || paused) return;
+  const prev = units[current];
+  current++;
+  if(current >= units.length){ stopAll(); return; }
+  const cur = units[current];
+  let wait;
+  if(cur.sIdx !== prev.sIdx){
+    wait = parseInt(pauseLen.value, 10);
+    if(sentences[cur.sIdx] && sentences[cur.sIdx].paraGap) wait += 300;
+  } else {
+    wait = 80;
+  }
+  gapTimer = setTimeout(speakCurrentHQ, wait);
+};
+
+// ============================================================
+//  3b) 免費手機語音（Web Speech）
 // ============================================================
 function speakCurrent(){
   if(current < 0 || current >= units.length){ stopAll(); return; }
@@ -235,14 +340,21 @@ function startFrom(i){
   current = i;
   speaking = true; paused = false;
   setButtons();
-  speakCurrent();
+  if(hqMode.checked) speakCurrentHQ();
+  else speakCurrent();
 }
 
 function play(){
+  // iPhone 需要在使用者「點擊」當下先解鎖音訊播放
+  if(hqMode.checked && !hqUnlocked){
+    hqAudio.src = SILENT;
+    hqAudio.play().then(() => { hqUnlocked = true; }).catch(() => {});
+  }
   if(paused){
     paused = false;
     setButtons();
-    speechSynthesis.resume();
+    if(hqMode.checked) hqAudio.play().catch(()=>{});
+    else speechSynthesis.resume();
     return;
   }
   if(!units.length) return;
@@ -253,7 +365,8 @@ function pause(){
   if(!speaking || paused) return;
   paused = true;
   setButtons();
-  speechSynthesis.pause();
+  if(hqMode.checked) hqAudio.pause();
+  else speechSynthesis.pause();
 }
 
 function stopAll(){
@@ -267,6 +380,7 @@ function stopAll(){
 function cancelSpeech(){
   if(gapTimer){ clearTimeout(gapTimer); gapTimer = null; }
   speechSynthesis.cancel();
+  try { hqAudio.pause(); } catch(e){}
 }
 
 function setButtons(){
@@ -355,6 +469,7 @@ stopBtn.addEventListener('click', stopAll);
 rate.addEventListener('input', () => {
   rateVal.textContent = parseFloat(rate.value).toFixed(1) + '×';
   localStorage.setItem('rate', rate.value);
+  if(hqMode.checked) hqAudio.playbackRate = parseFloat(rate.value);
 });
 
 pauseLen.addEventListener('input', () => {
@@ -375,6 +490,7 @@ dialogueVoiceSelect.addEventListener('change', () => {
 storyMode.addEventListener('change', () => {
   localStorage.setItem('storyMode', storyMode.checked ? '1' : '0');
   dialogueVoiceWrap.classList.toggle('hidden', !storyMode.checked);
+  azureDlgWrap.classList.toggle('hidden', !storyMode.checked);
   if(sentences.length){
     stopAll();
     buildUnits();
@@ -384,6 +500,23 @@ storyMode.addEventListener('change', () => {
       : '已關閉說故事模式，改為平順朗讀。';
   }
 });
+
+// 高音質（雲端）開關
+function applyHqUI(){
+  browserVoices.classList.toggle('hidden', hqMode.checked);
+  azureVoices.classList.toggle('hidden', !hqMode.checked);
+}
+hqMode.addEventListener('change', () => {
+  localStorage.setItem('hqMode', hqMode.checked ? '1' : '0');
+  applyHqUI();
+  stopAll();
+  hint.textContent = hqMode.checked
+    ? '已開啟高音質：使用雲端 AI 聲音（需要網路）。'
+    : '已關閉高音質：使用免費手機語音（可離線）。';
+});
+
+azureNarSelect.addEventListener('change', () => localStorage.setItem('azureNar', azureNarSelect.value));
+azureDlgSelect.addEventListener('change', () => localStorage.setItem('azureDlg', azureDlgSelect.value));
 
 // ============================================================
 //  6) 初始化
@@ -400,6 +533,15 @@ function init(){
   const savedStory = localStorage.getItem('storyMode');
   storyMode.checked = savedStory !== '0';   // 預設開啟
   dialogueVoiceWrap.classList.toggle('hidden', !storyMode.checked);
+  azureDlgWrap.classList.toggle('hidden', !storyMode.checked);
+
+  // 高音質模式與 AI 聲音
+  hqMode.checked = localStorage.getItem('hqMode') === '1';
+  applyHqUI();
+  const savedNar = localStorage.getItem('azureNar');
+  if(savedNar && azureNarSelect.querySelector(`option[value="${savedNar}"]`)) azureNarSelect.value = savedNar;
+  const savedDlg = localStorage.getItem('azureDlg');
+  if(savedDlg && azureDlgSelect.querySelector(`option[value="${savedDlg}"]`)) azureDlgSelect.value = savedDlg;
 
   loadVoices();
   if(speechSynthesis.onvoiceschanged !== undefined){

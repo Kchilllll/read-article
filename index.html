@@ -51,6 +51,14 @@
       </div>
 
       <div class="setting toggle-row">
+        <label for="hqMode">高音質（雲端 AI 聲音）</label>
+        <label class="switch">
+          <input type="checkbox" id="hqMode">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="setting toggle-row">
         <label for="storyMode">說故事模式（區分對話與旁白）</label>
         <label class="switch">
           <input type="checkbox" id="storyMode" checked>
@@ -58,14 +66,36 @@
         </label>
       </div>
 
-      <div class="setting">
-        <label for="voiceSelect">旁白聲音</label>
-        <select id="voiceSelect"></select>
+      <!-- 免費手機語音 -->
+      <div id="browserVoices">
+        <div class="setting">
+          <label for="voiceSelect">旁白聲音</label>
+          <select id="voiceSelect"></select>
+        </div>
+        <div class="setting" id="dialogueVoiceWrap">
+          <label for="dialogueVoiceSelect">對話聲音</label>
+          <select id="dialogueVoiceSelect"></select>
+        </div>
       </div>
 
-      <div class="setting" id="dialogueVoiceWrap">
-        <label for="dialogueVoiceSelect">對話聲音</label>
-        <select id="dialogueVoiceSelect"></select>
+      <!-- 雲端 AI 語音（高音質） -->
+      <div id="azureVoices" class="hidden">
+        <div class="setting">
+          <label for="azureNarSelect">旁白聲音（AI）</label>
+          <select id="azureNarSelect">
+            <option value="zh-TW-HsiaoChenNeural">曉臻（女聲・台灣）</option>
+            <option value="zh-TW-YunJheNeural">雲哲（男聲・台灣）</option>
+            <option value="zh-TW-HsiaoYuNeural">曉雨（女聲・台灣）</option>
+          </select>
+        </div>
+        <div class="setting" id="azureDlgWrap">
+          <label for="azureDlgSelect">對話聲音（AI）</label>
+          <select id="azureDlgSelect">
+            <option value="zh-TW-YunJheNeural">雲哲（男聲・台灣）</option>
+            <option value="zh-TW-HsiaoChenNeural">曉臻（女聲・台灣）</option>
+            <option value="zh-TW-HsiaoYuNeural">曉雨（女聲・台灣）</option>
+          </select>
+        </div>
       </div>
 
       <div class="setting">
