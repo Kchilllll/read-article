@@ -250,12 +250,29 @@ function buildSSML(text, voiceName, style){
     locale + "'><voice name='" + voiceName + "'>" + inner + "</voice></speak>";
 }
 
-async function fetchTTS(ssml){
-  return fetch(WORKER_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ssml })
-  });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 會自動重試的抓取：網路瞬斷、雲端忙碌(429)、伺服器錯誤(5xx) 都會重試
+async function fetchTTS(ssml, tries){
+  tries = tries || 3;
+  let lastErr;
+  for(let i = 0; i < tries; i++){
+    try {
+      const r = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssml })
+      });
+      if(r.ok) return r;
+      // 4xx（非 429）多半是內容問題，重試沒用，直接回傳讓上層處理
+      if(r.status !== 429 && r.status < 500) return r;
+      lastErr = new Error('tts ' + r.status);
+    } catch(e){
+      lastErr = e;   // 網路錯誤
+    }
+    await sleep(500 * (i + 1));   // 遞增等待再重試
+  }
+  throw lastErr || new Error('tts failed');
 }
 
 // 取得某一段的音檔網址：先看記憶體、再看手機本機快取、最後才跟雲端要
@@ -297,15 +314,27 @@ async function speakCurrentHQ(){
   try {
     url = await getAudioURL(unit);
   } catch(e){
-    hint.textContent = '⚠️ 雲端語音讀取失敗，請檢查網路（或關掉高音質改用免費語音）。';
-    stopAll();
+    // 多次重試仍失敗：停在這一句、保留位置，按 ▶ 可從這裡繼續
+    haltKeepPos('⚠️ 網路不穩，唸到這句先停了。網路恢復後按 ▶ 會從這句接著念。');
     return;
   }
   if(!speaking || paused) return;   // 抓取途中被停掉
   prefetch(current + 1);            // 先預抓下一段，減少空隙
   hqAudio.src = url;
   hqAudio.playbackRate = parseFloat(rate.value);
-  hqAudio.play().catch(()=>{});
+  hqAudio.play().catch(() => {      // 播放被打斷時再試一次
+    setTimeout(() => { if(speaking && !paused) hqAudio.play().catch(()=>{}); }, 250);
+  });
+}
+
+// 「軟停止」：停下但保留目前句子位置，方便按播放接續
+function haltKeepPos(msg){
+  if(gapTimer){ clearTimeout(gapTimer); gapTimer = null; }
+  speechSynthesis.cancel();
+  try { hqAudio.pause(); } catch(e){}
+  speaking = false; paused = false;   // 注意：不清掉 current
+  setButtons();
+  if(msg) hint.textContent = msg;
 }
 
 hqAudio.onended = () => {
