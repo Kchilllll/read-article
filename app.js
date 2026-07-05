@@ -65,6 +65,7 @@ const WORKER_URL = 'https://tts.kchill.workers.dev';
 const hqAudio = new Audio();
 const memCache = new Map();        // 本次開啟期間的音檔快取（記憶體）
 let hqUnlocked = false;
+let programmaticPause = false;   // 區分「程式主動暫停」與「被系統打斷」
 // 一小段無聲音檔，用來在 iPhone 上「解鎖」自動播放
 const SILENT = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTEFNRTMuOTkuNVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
 
@@ -322,6 +323,7 @@ async function speakCurrentHQ(){
   prefetch(current + 1);            // 先預抓下一段，減少空隙
   hqAudio.src = url;
   hqAudio.playbackRate = parseFloat(rate.value);
+  programmaticPause = false;
   hqAudio.play().catch(() => {      // 播放被打斷時再試一次
     setTimeout(() => { if(speaking && !paused) hqAudio.play().catch(()=>{}); }, 250);
   });
@@ -331,6 +333,7 @@ async function speakCurrentHQ(){
 function haltKeepPos(msg){
   if(gapTimer){ clearTimeout(gapTimer); gapTimer = null; }
   speechSynthesis.cancel();
+  programmaticPause = true;
   try { hqAudio.pause(); } catch(e){}
   speaking = false; paused = false;   // 注意：不清掉 current
   setButtons();
@@ -352,6 +355,26 @@ hqAudio.onended = () => {
   }
   gapTimer = setTimeout(speakCurrentHQ, wait);
 };
+
+// 被系統打斷（來電、通知聲、其他 App 搶音訊）→ 自動接回繼續播
+hqAudio.addEventListener('pause', () => {
+  if(programmaticPause){ programmaticPause = false; return; }  // 是自己按的暫停
+  if(speaking && !paused && !hqAudio.ended){
+    setTimeout(() => {
+      if(speaking && !paused && hqAudio.paused && !hqAudio.ended){
+        hqAudio.play().catch(() => {});
+      }
+    }, 300);
+  }
+});
+
+// 某句音檔載入/解碼出錯 → 跳過這句繼續，不要整個停住
+hqAudio.addEventListener('error', () => {
+  if(!speaking || paused) return;
+  current++;
+  if(current >= units.length){ stopAll(); return; }
+  gapTimer = setTimeout(speakCurrentHQ, 200);
+});
 
 // ============================================================
 //  3b) 免費手機語音（Web Speech）
@@ -419,7 +442,7 @@ function play(){
   if(paused){
     paused = false;
     setButtons();
-    if(hqMode.checked) hqAudio.play().catch(()=>{});
+    if(hqMode.checked){ programmaticPause = false; hqAudio.play().catch(()=>{}); }
     else speechSynthesis.resume();
     return;
   }
@@ -431,7 +454,7 @@ function pause(){
   if(!speaking || paused) return;
   paused = true;
   setButtons();
-  if(hqMode.checked) hqAudio.pause();
+  if(hqMode.checked){ programmaticPause = true; hqAudio.pause(); }
   else speechSynthesis.pause();
 }
 
@@ -446,6 +469,7 @@ function stopAll(){
 function cancelSpeech(){
   if(gapTimer){ clearTimeout(gapTimer); gapTimer = null; }
   speechSynthesis.cancel();
+  programmaticPause = true;
   try { hqAudio.pause(); } catch(e){}
 }
 
