@@ -297,7 +297,8 @@ async function fetchTTS(ssml, tries){
 }
 
 // 依累積字數把 units 切成數段（每段一次跟雲端要）
-const MAX_CHUNK_CHARS = 1800;
+// 段小一點：每次請求較快、在手機網路上較不會斷線
+const MAX_CHUNK_CHARS = 900;
 function buildChunks(us){
   const chunks = []; let cur = []; let n = 0;
   for(const u of us){
@@ -348,6 +349,39 @@ async function cachedTrack(key){
   return null;
 }
 
+// 每一小段各自快取，讓準備中斷後可以「接著做」，不重做已完成的段
+async function cachedChunk(k){
+  try {
+    const c = await caches.open('tts-audio');
+    const resp = await c.match('https://tts.chunk/' + k);
+    if(resp) return await resp.blob();
+  } catch(e){}
+  return null;
+}
+async function putChunk(k, blob){
+  try {
+    const c = await caches.open('tts-audio');
+    await c.put('https://tts.chunk/' + k, new Response(blob, { headers:{'Content-Type':'audio/mpeg'} }));
+  } catch(e){}
+}
+
+// 合成一段；遇到內容/大小問題(4xx)會自動「切一半」重試，
+// 單句仍失敗就略過該句 → 長文章不會因為某一小段出問題就整個失敗。
+async function synthChunk(chunkUnits, sents){
+  const r = await fetchTTS(chunkSSML(chunkUnits, sents));   // 網路/忙碌會自動重試，仍失敗才丟出
+  if(r.status === 403){ const err = new Error('quota'); err.quota = true; throw err; }
+  if(!r.ok){
+    if(chunkUnits.length > 1){
+      const mid = Math.ceil(chunkUnits.length / 2);
+      const a = await synthChunk(chunkUnits.slice(0, mid), sents);
+      const b = await synthChunk(chunkUnits.slice(mid), sents);
+      return new Blob([a, b], { type: 'audio/mpeg' });
+    }
+    return new Blob([], { type: 'audio/mpeg' });   // 單句仍失敗 → 略過
+  }
+  return await r.blob();
+}
+
 // 產生整條音檔（會計額度、寫快取），回傳 Blob 或 null
 let cancelPrepare = false;
 async function generateTrack(us, sents, key, onProgress){
@@ -358,13 +392,20 @@ async function generateTrack(us, sents, key, onProgress){
     if(onProgress) onProgress(i, chunks.length);
     if(quotaExhausted()){ notifyQuota(); return null; }
     const chunkChars = chunks[i].reduce((s,u)=>s+u.text.length, 0);
-    let r;
-    try { r = await fetchTTS(chunkSSML(chunks[i], sents)); }
-    catch(e){ prepError('⚠️ 網路不穩，準備失敗，請稍後再按播放重試。'); return null; }
-    if(r.status === 403 || r.status === 429){ setQuotaExhausted(); notifyQuota(); return null; }
-    if(!r.ok){ prepError('⚠️ 語音產生失敗（' + r.status + '），請稍後再試。'); return null; }
-    addUsage(chunkChars);
-    blobs.push(await r.blob());
+    const chunkKey = 'c' + hashStr(chunkSSML(chunks[i], sents));
+    let blob = await cachedChunk(chunkKey);   // 之前做過就直接用
+    if(!blob){
+      try {
+        blob = await synthChunk(chunks[i], sents);
+      } catch(e){
+        if(e && e.quota){ setQuotaExhausted(); notifyQuota(); return null; }
+        prepError('⚠️ 網路不穩，準備到一半停了。網路好一點時再按播放即可（已完成的部分不會重做）。');
+        return null;
+      }
+      addUsage(chunkChars);
+      if(blob.size > 0) await putChunk(chunkKey, blob);
+    }
+    if(blob.size > 0) blobs.push(blob);
   }
   const track = new Blob(blobs, { type: 'audio/mpeg' });
   try {

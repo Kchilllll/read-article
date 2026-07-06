@@ -1,5 +1,5 @@
 /* Service Worker — 讓 App 離線可開 */
-const CACHE = 'read-article-v7';
+const CACHE = 'read-article-v8';
 const AUDIO_CACHE = 'tts-audio';   // 雲端語音音檔快取，勿刪
 const ASSETS = [
   './',
