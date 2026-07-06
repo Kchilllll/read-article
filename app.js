@@ -700,7 +700,15 @@ function play(){
   if(paused){
     paused = false;
     setButtons();
-    if(hqMode.checked){ programmaticPause = false; hqAudio.play().catch(()=>{}); }
+    if(hqMode.checked){
+      programmaticPause = false;
+      const p = hqAudio.play();
+      if(p && p.catch) p.catch(() => {
+        // 續播失敗（音檔可能被系統回收）→ 重新載入並從上次位置接續
+        savePos();
+        startFrom(-1);
+      });
+    }
     else speechSynthesis.resume();
     return;
   }
