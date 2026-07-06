@@ -516,6 +516,8 @@ hqAudio.addEventListener('timeupdate', () => {
 });
 
 hqAudio.onended = () => {
+  // 解鎖用的無聲音檔播完不算數，只有真正的音檔才算聽完
+  if(!hqTrackURL || hqAudio._trackKey !== hqTrackKey) return;
   if(hqMode.checked && speaking){
     clearPos();              // 聽完了，下次從頭
     stopAll();
@@ -694,17 +696,20 @@ function startFrom(i){
 }
 
 function play(){
-  // iPhone 需要在使用者「點擊」當下先解鎖音訊播放
-  if(hqMode.checked && !hqUnlocked){
-    hqAudio.src = SILENT;
-    hqAudio.play().then(() => { hqUnlocked = true; }).catch(() => {});
-  }
+  // 從暫停接續：直接續播，絕不能動到音軌
   if(paused){
     paused = false;
     setButtons();
     if(hqMode.checked){ programmaticPause = false; hqAudio.play().catch(()=>{}); }
     else speechSynthesis.resume();
     return;
+  }
+  // iPhone 需要在使用者「點擊」當下先解鎖音訊播放（只在全新開始時做一次）
+  if(hqMode.checked && !hqUnlocked){
+    hqUnlocked = true;
+    hqAudio.src = SILENT;
+    hqAudio._trackKey = null;   // 標記目前不是真正的音檔，之後會重新載入
+    hqAudio.play().catch(() => {});
   }
   if(!units.length) return;
   // 沒有進行中的位置時：高音質從上次聽到的地方接續（-1），免費語音從頭
