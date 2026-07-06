@@ -534,12 +534,13 @@ function quotaData(){
 }
 function quotaSave(d){ localStorage.setItem('quota', JSON.stringify(d)); }
 function addUsage(chars){ const d = quotaData(); d.used += chars; quotaSave(d); renderQuota(); }
-function quotaExhausted(){ const d = quotaData(); return !!d.exhausted || d.used >= QUOTA_LIMIT; }
-function setQuotaExhausted(){ const d = quotaData(); d.exhausted = true; quotaSave(d); renderQuota(); }
+// 只用「實際累計字數」判斷，避免舊版把暫時性忙碌誤標成用完後卡住
+function quotaExhausted(){ return quotaData().used >= QUOTA_LIMIT; }
+function setQuotaExhausted(){ const d = quotaData(); d.used = QUOTA_LIMIT; quotaSave(d); renderQuota(); }
 function renderQuota(){
   const d = quotaData();
   quotaEl.textContent = '本月 AI 語音已用約 ' + (d.used/10000).toFixed(1) + ' 萬字 / 50 萬';
-  quotaEl.classList.toggle('warn', d.used >= QUOTA_WARN || d.exhausted);
+  quotaEl.classList.toggle('warn', d.used >= QUOTA_WARN);
 }
 function notifyQuota(){
   hint.textContent = '⚠️ 本月免費 AI 語音額度用完了，已暫停。下個月會自動恢復，或先關掉高音質改用免費語音（不會扣到錢）。';
@@ -863,30 +864,32 @@ saveBtn.addEventListener('click', () => {
 
 // 預先載入清單裡所有文章的 AI 語音（之後可離線秒播）
 preloadBtn.addEventListener('click', async () => {
-  if(!hqMode.checked){ hint.textContent = '請先開啟「高音質」再預先載入。'; return; }
   const arr = libData();
   if(!arr.length){ hint.textContent = '清單是空的，沒有可載入的。'; return; }
+  if(quotaExhausted()){ notifyQuota(); return; }
   preloadBtn.disabled = true;
   const story = storyMode.checked;
-  let loaded = 0, skipped = 0;
+  let loaded = 0, skipped = 0, stopped = false;
   for(let k=0;k<arr.length;k++){
-    if(quotaExhausted()){ notifyQuota(); break; }
+    if(quotaExhausted()){ notifyQuota(); stopped = true; break; }
     const sents = buildSentences(arr[k].text);
     const us = buildUnitsFrom(sents, story);
     if(!us.length) continue;
     const key = trackKeyFor(us);
     if(await cachedTrack(key)){ skipped++; continue; }   // 已載入過
     cancelPrepare = false;
-    const track = await generateTrack(us, sents, key, (i,total) => {
-      prepEl.classList.remove('hidden');
-      prepEl.textContent = '預先載入「' + arr[k].title + '」… ' + (i+1) + '/' + total +
+    // 進度顯示在最下方（輸入頁看得到）
+    const track = await generateTrack(us, sents, key, (i, total) => {
+      hint.textContent = '預先載入「' + arr[k].title + '」… ' + (i+1) + ' / ' + total +
         '（第 ' + (k+1) + '/' + arr.length + ' 篇）';
     });
     if(track) loaded++;
+    else { stopped = true; break; }   // 網路/額度中止，保留已完成的，可再按繼續
   }
-  hidePrep();
   preloadBtn.disabled = false;
-  hint.textContent = '預先載入完成：新增 ' + loaded + ' 篇、已存在 ' + skipped + ' 篇。這些之後可離線秒播。';
+  if(!stopped){
+    hint.textContent = '預先載入完成：新增 ' + loaded + ' 篇、已存在 ' + skipped + ' 篇。之後可離線秒播。';
+  }
 });
 
 // ============================================================
