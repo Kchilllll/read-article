@@ -852,43 +852,52 @@ function loadFromLibrary(id){
 }
 
 saveBtn.addEventListener('click', () => {
-  const text = inputText.value.trim();
-  if(!text){ hint.textContent = '請先貼上文章再存。'; return; }
-  const title = saveTitle.value.trim() || ('未命名 ' + new Date().toLocaleDateString());
-  const arr = libData();
-  arr.push({ id: Date.now(), title, text });
-  libSave(arr);
-  saveTitle.value = '';
-  hint.textContent = '已存到清單：' + title;
+  try {
+    const text = inputText.value.trim();
+    if(!text){ hint.textContent = '請先貼上文章再存。'; return; }
+    const title = saveTitle.value.trim() || ('未命名 ' + new Date().toLocaleDateString());
+    const arr = libData();
+    arr.push({ id: Date.now(), title, text });
+    libSave(arr);
+    saveTitle.value = '';
+    hint.textContent = '已存到清單：' + title;
+  } catch(e){
+    hint.textContent = '存清單出錯：' + (e && e.message ? e.message : e);
+  }
 });
 
 // 預先載入清單裡所有文章的 AI 語音（之後可離線秒播）
 preloadBtn.addEventListener('click', async () => {
-  const arr = libData();
-  if(!arr.length){ hint.textContent = '清單是空的，沒有可載入的。'; return; }
-  if(quotaExhausted()){ notifyQuota(); return; }
-  preloadBtn.disabled = true;
-  const story = storyMode.checked;
-  let loaded = 0, skipped = 0, stopped = false;
-  for(let k=0;k<arr.length;k++){
-    if(quotaExhausted()){ notifyQuota(); stopped = true; break; }
-    const sents = buildSentences(arr[k].text);
-    const us = buildUnitsFrom(sents, story);
-    if(!us.length) continue;
-    const key = trackKeyFor(us);
-    if(await cachedTrack(key)){ skipped++; continue; }   // 已載入過
-    cancelPrepare = false;
-    // 進度顯示在最下方（輸入頁看得到）
-    const track = await generateTrack(us, sents, key, (i, total) => {
-      hint.textContent = '預先載入「' + arr[k].title + '」… ' + (i+1) + ' / ' + total +
-        '（第 ' + (k+1) + '/' + arr.length + ' 篇）';
-    });
-    if(track) loaded++;
-    else { stopped = true; break; }   // 網路/額度中止，保留已完成的，可再按繼續
-  }
-  preloadBtn.disabled = false;
-  if(!stopped){
-    hint.textContent = '預先載入完成：新增 ' + loaded + ' 篇、已存在 ' + skipped + ' 篇。之後可離線秒播。';
+  hint.textContent = '開始預先載入…';   // 立即回饋，確認按鈕有反應
+  try {
+    const arr = libData();
+    if(!arr.length){ hint.textContent = '清單是空的：請先貼文章、填標題、按「存到清單」，再預先載入。'; return; }
+    if(quotaExhausted()){ notifyQuota(); return; }
+    preloadBtn.disabled = true;
+    const story = storyMode.checked;
+    let loaded = 0, skipped = 0, stopped = false;
+    for(let k=0;k<arr.length;k++){
+      if(quotaExhausted()){ notifyQuota(); stopped = true; break; }
+      const sents = buildSentences(arr[k].text);
+      const us = buildUnitsFrom(sents, story);
+      if(!us.length) continue;
+      const key = trackKeyFor(us);
+      if(await cachedTrack(key)){ skipped++; continue; }   // 已載入過
+      cancelPrepare = false;
+      const track = await generateTrack(us, sents, key, (i, total) => {
+        hint.textContent = '預先載入「' + arr[k].title + '」… ' + (i+1) + ' / ' + total +
+          '（第 ' + (k+1) + '/' + arr.length + ' 篇）';
+      });
+      if(track) loaded++;
+      else { stopped = true; break; }   // 網路/額度中止，保留已完成的，可再按繼續
+    }
+    preloadBtn.disabled = false;
+    if(!stopped){
+      hint.textContent = '預先載入完成：新增 ' + loaded + ' 篇、已存在 ' + skipped + ' 篇。之後可離線秒播。';
+    }
+  } catch(e){
+    preloadBtn.disabled = false;
+    hint.textContent = '預先載入出錯：' + (e && e.message ? e.message : e);
   }
 });
 
