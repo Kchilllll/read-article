@@ -52,6 +52,13 @@
 
       <div id="prep" class="prep hidden"></div>
 
+      <!-- 播放進度（高音質模式） -->
+      <div id="progressRow" class="progress-row hidden">
+        <span id="curTime" class="time">0:00</span>
+        <input type="range" id="seekBar" min="0" max="1000" step="1" value="0" disabled>
+        <span id="totTime" class="time">0:00</span>
+      </div>
+
       <!-- 控制列 -->
       <div class="controls">
         <button id="playBtn" class="btn btn-round" aria-label="播放">▶</button>

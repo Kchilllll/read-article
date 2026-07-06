@@ -36,6 +36,10 @@ const narStyle = $('narStyle');
 const dlgStyle = $('dlgStyle');
 const prepEl   = $('prep');
 const quotaEl  = $('quota');
+const progressRow = $('progressRow');
+const seekBar  = $('seekBar');
+const curTime  = $('curTime');
+const totTime  = $('totTime');
 const saveTitle   = $('saveTitle');
 const saveBtn     = $('saveBtn');
 const preloadBtn  = $('preloadBtn');
@@ -468,32 +472,116 @@ function unitAtTime(t){
   return ans;
 }
 
+// i >= 0：從第 i 句開始；i < 0：從「上次聽到的位置」接續
 async function hqPlayFrom(i){
   const ok = await prepareTrack();
   if(!ok){ speaking = false; setButtons(); return; }
   if(!speaking) return;   // 準備期間被停掉
   if(hqAudio._trackKey !== hqTrackKey){ await loadTrackMeta(); }
-  const startT = (hqTimeline && hqTimeline[i]) ? hqTimeline[i].start : 0;
+  let startT;
+  if(i < 0){
+    startT = savedPos();                       // 無縫接續上次
+    const idx = unitAtTime(startT);
+    current = idx >= 0 ? idx : 0;
+  } else {
+    startT = (hqTimeline && hqTimeline[i]) ? hqTimeline[i].start : 0;
+    current = i;
+  }
   try { hqAudio.currentTime = startT; } catch(e){}
-  current = i;
+  if(units[current]) highlight(units[current].sIdx);
   hqAudio.playbackRate = parseFloat(rate.value);
   programmaticPause = false;
+  updateProgressUI();
   hqAudio.play().catch(() => {
     setTimeout(() => { if(speaking && !paused) hqAudio.play().catch(()=>{}); }, 250);
   });
   setupMediaSession();
 }
 
-// 播放時的近似高亮
+// 播放時的近似高亮 + 進度條更新 + 記錄位置
+let seeking = false;        // 使用者正在拖進度條
+let lastPosSave = 0;
 hqAudio.addEventListener('timeupdate', () => {
-  if(!hqMode.checked || !speaking || paused || !hqTimeline) return;
+  if(!hqMode.checked) return;
+  updateProgressUI();
+  if(speaking && !paused && hqAudio.currentTime > 0 && Date.now() - lastPosSave > 3000){
+    lastPosSave = Date.now();
+    savePos();
+  }
+  if(!speaking || paused || !hqTimeline) return;
   const idx = unitAtTime(hqAudio.currentTime);
   if(idx !== lastHiIdx && idx >= 0 && units[idx]){
     lastHiIdx = idx; current = idx; highlight(units[idx].sIdx);
   }
 });
 
-hqAudio.onended = () => { if(hqMode.checked && speaking) stopAll(); };
+hqAudio.onended = () => {
+  if(hqMode.checked && speaking){
+    clearPos();              // 聽完了，下次從頭
+    stopAll();
+    updateProgressUI();
+  }
+};
+
+// ---- 進度條 ----
+function fmtTime(t){
+  if(!isFinite(t) || t < 0) t = 0;
+  t = Math.round(t);
+  const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+  const mm = h ? String(m).padStart(2,'0') : String(m);
+  return (h ? h + ':' : '') + mm + ':' + String(s).padStart(2,'0');
+}
+
+function updateProgressUI(){
+  const dur = hqAudio.duration;
+  const ready = isFinite(dur) && dur > 0;
+  seekBar.disabled = !ready;
+  totTime.textContent = ready ? fmtTime(dur) : '0:00';
+  if(!seeking){
+    curTime.textContent = fmtTime(hqAudio.currentTime);
+    seekBar.value = ready ? Math.round(hqAudio.currentTime / dur * 1000) : 0;
+  }
+}
+
+seekBar.addEventListener('input', () => {   // 拖曳中：先預覽時間
+  seeking = true;
+  const dur = hqAudio.duration;
+  if(isFinite(dur) && dur > 0){
+    curTime.textContent = fmtTime(seekBar.value / 1000 * dur);
+  }
+});
+
+seekBar.addEventListener('change', () => {  // 放開：跳到該位置
+  seeking = false;
+  const dur = hqAudio.duration;
+  if(!isFinite(dur) || dur <= 0) return;
+  const t = seekBar.value / 1000 * dur;
+  try { hqAudio.currentTime = t; } catch(e){}
+  savePos();
+  const idx = unitAtTime(t);
+  if(idx >= 0 && units[idx]){ current = idx; lastHiIdx = idx; highlight(units[idx].sIdx); }
+  updateProgressUI();
+});
+
+// ---- 記住聽到哪（每條音檔各自記） ----
+function posKey(){ return hqTrackKey ? 'pos:' + hqTrackKey : null; }
+function savePos(){
+  const k = posKey();
+  if(k && hqAudio.currentTime > 1) localStorage.setItem(k, String(hqAudio.currentTime));
+}
+function clearPos(){
+  const k = posKey();
+  if(k) localStorage.removeItem(k);
+}
+function savedPos(){
+  const k = posKey();
+  if(!k) return 0;
+  const v = parseFloat(localStorage.getItem(k) || '0');
+  const dur = hqAudio.duration;
+  // 已接近結尾就當作聽完，從頭開始
+  if(isFinite(dur) && dur > 0 && v > dur - 3) return 0;
+  return isFinite(v) && v > 1 ? v : 0;
+}
 
 // 被系統打斷（來電、通知聲、其他 App）→ 自動接回
 hqAudio.addEventListener('pause', () => {
@@ -594,9 +682,10 @@ function speakCurrent(){
   speechSynthesis.speak(u);
 }
 
+// i >= 0：從第 i 句開始；i < 0：高音質模式會接續上次聽到的位置
 function startFrom(i){
   cancelSpeech();
-  current = i;
+  current = i < 0 ? 0 : i;
   speaking = true; paused = false;
   lastHiIdx = -1;
   setButtons();
@@ -618,18 +707,20 @@ function play(){
     return;
   }
   if(!units.length) return;
-  startFrom(current >= 0 && current < units.length ? current : 0);
+  // 沒有進行中的位置時：高音質從上次聽到的地方接續（-1），免費語音從頭
+  startFrom(current >= 0 && current < units.length ? current : -1);
 }
 
 function pause(){
   if(!speaking || paused) return;
   paused = true;
   setButtons();
-  if(hqMode.checked){ programmaticPause = true; hqAudio.pause(); }
+  if(hqMode.checked){ programmaticPause = true; hqAudio.pause(); savePos(); }
   else speechSynthesis.pause();
 }
 
 function stopAll(){
+  if(hqMode.checked && !hqAudio.ended) savePos();   // 記住聽到哪，下次接續
   cancelPrepare = true;      // 若正在準備音檔，中止它
   cancelSpeech();
   speaking = false; paused = false;
@@ -770,6 +861,7 @@ storyMode.addEventListener('change', () => {
 function applyHqUI(){
   browserVoices.classList.toggle('hidden', hqMode.checked);
   azureVoices.classList.toggle('hidden', !hqMode.checked);
+  progressRow.classList.toggle('hidden', !hqMode.checked);
 }
 hqMode.addEventListener('change', () => {
   localStorage.setItem('hqMode', hqMode.checked ? '1' : '0');
