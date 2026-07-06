@@ -27,6 +27,18 @@
         <button id="cleanBtn" class="btn btn-primary">整理並斷句</button>
         <button id="clearBtn" class="btn btn-ghost">清空</button>
       </div>
+
+      <div class="lib">
+        <div class="row">
+          <input id="saveTitle" class="title-input" placeholder="標題（例如：第一章）">
+          <button id="saveBtn" class="btn btn-ghost small">存到清單</button>
+        </div>
+        <div class="row space-between lib-head">
+          <span class="field-label">我的清單</span>
+          <button id="preloadBtn" class="btn btn-ghost small">預先載入全部</button>
+        </div>
+        <div id="libraryList" class="lib-list"></div>
+      </div>
     </section>
 
     <!-- 預覽 / 播放區 -->
@@ -37,6 +49,8 @@
       </div>
 
       <div id="sentences" class="sentences"></div>
+
+      <div id="prep" class="prep hidden"></div>
 
       <!-- 控制列 -->
       <div class="controls">
@@ -105,6 +119,8 @@
         <label for="pauseLen">句子間停頓 <span id="pauseVal">中</span></label>
         <input type="range" id="pauseLen" min="0" max="600" step="100" value="200">
       </div>
+
+      <div id="quota" class="quota"></div>
     </section>
 
     <p id="hint" class="hint"></p>

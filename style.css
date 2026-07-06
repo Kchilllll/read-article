@@ -123,4 +123,35 @@ textarea:focus{outline:2px solid var(--amber-soft);}
 
 .mini-note{font-size:12px;color:var(--ink-soft);margin:4px 2px 0;line-height:1.5;}
 
+/* 準備進度 */
+.prep{
+  text-align:center;font-size:14px;color:var(--ink);
+  background:var(--highlight);border-radius:10px;
+  padding:10px;margin:12px 0 4px;
+}
+
+/* 額度顯示 */
+.quota{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:14px;}
+.quota.warn{color:#b4531f;font-weight:600;}
+
+/* 我的清單 */
+.lib{margin-top:18px;border-top:1px solid var(--line);padding-top:14px;}
+.lib-head{margin-top:12px;}
+.title-input{
+  flex:1;border:1px solid var(--line);border-radius:12px;
+  padding:11px;font-size:16px;background:#fffdf8;color:var(--ink);
+  font-family:inherit;
+}
+.title-input:focus{outline:2px solid var(--amber-soft);}
+.lib-list{margin-top:10px;}
+.lib-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 4px;border-bottom:1px solid var(--line);
+}
+.lib-title{
+  flex:1;font-size:16px;color:var(--ink);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.lib-title:hover{color:var(--amber);}
+
 .hint{text-align:center;color:var(--ink-soft);font-size:13px;margin-top:20px;min-height:18px;}
