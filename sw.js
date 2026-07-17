@@ -1,5 +1,5 @@
 /* Service Worker — 讓 App 離線可開 */
-const CACHE = 'read-article-v15';
+const CACHE = 'read-article-v16';
 const AUDIO_CACHE = 'tts-audio';   // 雲端語音音檔快取，勿刪
 const ASSETS = [
   './',
@@ -28,12 +28,13 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-/* App 檔案改用「網路優先」：有網路一定拿到最新版，離線才退回快取 */
+/* App 檔案「網路優先」且跳過 HTTP 快取（no-cache 會跟伺服器確認最新版），
+   離線時才退回本機快取 */
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin === self.location.origin) {
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: 'no-cache' })
         .then((r) => {
           const copy = r.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
