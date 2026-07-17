@@ -4,6 +4,8 @@
    重點二：說故事模式 — 區分「對話」與「旁白」，用不同聲音唸
    ============================================================ */
 
+const APP_VERSION = 15;   // 由程式本身顯示，看到數字＝這支程式檔確定是新的
+
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
 const inputView   = $('inputView');
@@ -1035,6 +1037,8 @@ function init(){
 
   renderLibrary();
   renderQuota();
+  const verEl = $('ver');
+  if(verEl) verEl.textContent = '版本 ' + APP_VERSION;
 
   loadVoices();
   if(speechSynthesis.onvoiceschanged !== undefined){
