@@ -394,7 +394,6 @@ async function generateTrack(us, sents, key, onProgress){
   for(let i=0;i<chunks.length;i++){
     if(cancelPrepare) return null;
     if(onProgress) onProgress(i, chunks.length);
-    if(quotaExhausted()){ notifyQuota(); return null; }
     const chunkChars = chunks[i].reduce((s,u)=>s+u.text.length, 0);
     const chunkKey = 'c' + hashStr(chunkSSML(chunks[i], sents));
     let blob = await cachedChunk(chunkKey);   // 之前做過就直接用
@@ -629,11 +628,11 @@ function quotaExhausted(){ return quotaData().used >= QUOTA_LIMIT; }
 function setQuotaExhausted(){ const d = quotaData(); d.used = QUOTA_LIMIT; quotaSave(d); renderQuota(); }
 function renderQuota(){
   const d = quotaData();
-  quotaEl.textContent = '本月 AI 語音已用約 ' + (d.used/10000).toFixed(1) + ' 萬字 / 50 萬';
-  quotaEl.classList.toggle('warn', d.used >= QUOTA_WARN);
+  quotaEl.textContent = '本月在這台裝置產生約 ' + (d.used/10000).toFixed(1) + ' 萬字 AI 語音（參考值）';
+  quotaEl.classList.remove('warn');
 }
 function notifyQuota(){
-  hint.textContent = '⚠️ 本月免費 AI 語音額度用完了，已暫停。下個月會自動恢復，或先關掉高音質改用免費語音（不會扣到錢）。';
+  hint.textContent = '⚠️ 雲端語音服務回報額度已用完，暫停產生。可先關掉高音質改用免費語音（不會扣到錢）。';
 }
 
 // ============================================================
@@ -977,12 +976,10 @@ preloadBtn.addEventListener('click', async () => {
   try {
     const arr = libData();
     if(!arr.length){ hint.textContent = '清單是空的：請先貼文章、填標題、按「存到清單」，再預先載入。'; return; }
-    if(quotaExhausted()){ notifyQuota(); return; }
     preloadBtn.disabled = true;
     const story = storyMode.checked;
     let loaded = 0, skipped = 0, stopped = false;
     for(let k=0;k<arr.length;k++){
-      if(quotaExhausted()){ notifyQuota(); stopped = true; break; }
       const sents = buildSentences(arr[k].text);
       const us = buildUnitsFrom(sents, story);
       if(!us.length) continue;
